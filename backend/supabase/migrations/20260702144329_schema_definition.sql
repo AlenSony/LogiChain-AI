@@ -39,7 +39,7 @@ CREATE TABLE public.profiles (
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     phone VARCHAR(50),
-    role user_role NOT NULL DEFAULT 'customer',
+    role public.user_role NOT NULL DEFAULT 'customer',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -140,7 +140,11 @@ BEGIN
         new.id,
         COALESCE(new.raw_user_meta_data->>'name', 'New User'),
         new.email,
-        COALESCE((new.raw_user_meta_data->>'role')::user_role, 'customer'::user_role)
+        CASE
+            WHEN new.raw_user_meta_data->>'role' IN ('customer', 'admin', 'warehouse_manager', 'pickup_employee', 'delivery_employee')
+            THEN (new.raw_user_meta_data->>'role')::public.user_role
+            ELSE 'customer'::public.user_role
+        END
     );
     RETURN NEW;
 END;
