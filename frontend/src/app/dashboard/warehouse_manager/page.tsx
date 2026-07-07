@@ -1,5 +1,6 @@
 import React from 'react';
 import { createClient } from '@/lib/supabase/server';
+import WarehousePackageAction from '@/components/ui/WarehousePackageAction';
 
 export default async function WarehouseManagerDashboard() {
   const supabase = await createClient();
@@ -23,13 +24,16 @@ export default async function WarehouseManagerDashboard() {
     const { data: nodePackages } = await supabase
       .from('packages')
       .select('*')
-      .eq('status', 'in_warehouse')
-      // Ideally we check if it's in THIS warehouse via tracking events or a current_node field.
-      // Since the schema relies on tracking_events, we fetch packages that have their latest event here.
-      // For simplicity in this UI mock, we'll fetch some active packages and assume they are in this node.
-      .limit(10);
+      .eq('status', 'in_warehouse');
     
-    packages = nodePackages || [];
+    // For packages at this warehouse, verify via routing that they belong here
+    const { data: routeLinks } = await supabase
+      .from('package_routes')
+      .select('package_id')
+      .eq('warehouse_id', warehouse.warehouse_id);
+    
+    const validPackageIds = new Set((routeLinks || []).map(r => r.package_id));
+    packages = (nodePackages || []).filter(pkg => validPackageIds.has(pkg.package_id));
   }
 
   const capacityPercent = warehouse 
@@ -117,9 +121,7 @@ export default async function WarehouseManagerDashboard() {
                   <td className="px-6 py-4 text-sm text-slate-600">{pkg.weight} kg</td>
                   <td className="px-6 py-4 text-sm text-slate-600 truncate max-w-[200px]">{pkg.destination_address}</td>
                   <td className="px-6 py-4">
-                    <button className="text-xs font-medium text-[#059669] hover:text-[#047857] bg-[#D1FAE5] px-3 py-1 rounded-full border border-[#059669]/20 transition-colors">
-                      Scan Next Route
-                    </button>
+                    <WarehousePackageAction packageId={pkg.package_id} />
                   </td>
                 </tr>
               ))}

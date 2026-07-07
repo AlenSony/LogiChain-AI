@@ -20,8 +20,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             "email": payload.get("email"),
             "role": payload.get("user_metadata", {}).get("role", "customer")
         }
-    except JWTError:
+    except JWTError as e:
+        print(f"JWTError: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session token",
+            detail=f"Invalid or expired session token: {str(e)}",
         )

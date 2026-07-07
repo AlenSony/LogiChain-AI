@@ -1,5 +1,6 @@
 import React from 'react';
 import { createClient } from '@/lib/supabase/server';
+import DriverTaskCard from '@/components/ui/DriverTaskCard';
 
 export default async function DriverDashboard() {
   const supabase = await createClient();
@@ -20,26 +21,25 @@ export default async function DriverDashboard() {
   const isDelivery = employee?.emp_type === 'delivery_agent';
 
   // 3. Fetch active tasks for this driver
-  // In a real app, this would query a dispatch or assignment table.
-  // We'll mock a few tasks for the UI presentation.
-  const mockTasks = [
-    {
-      id: 'TRK-98213460',
-      type: isDelivery ? 'delivery' : 'pickup',
-      address: isDelivery ? 'Powai, Mumbai' : 'Chembur, Mumbai',
-      status: 'pending',
-      details: 'Medical Supplies - Fragile',
-      time: '10:30 AM',
-    },
-    {
-      id: 'TRK-98213462',
-      type: isDelivery ? 'delivery' : 'pickup',
-      address: 'Juhu, Mumbai',
-      status: 'pending',
-      details: 'Standard Package',
-      time: '11:45 AM',
-    },
-  ];
+  // Find package IDs that have tracking events assigned to this driver
+  const { data: driverEvents } = await supabase
+    .from('tracking_events')
+    .select('package_id')
+    .eq('employee_id', employee?.employee_id);
+    
+  const packageIds = Array.from(new Set((driverEvents || []).map(e => e.package_id)));
+
+  let activeTasks = [];
+  if (packageIds.length > 0) {
+    const { data: packagesData } = await supabase
+      .from('packages')
+      .select('*')
+      .in('package_id', packageIds)
+      .neq('status', 'delivered')
+      .neq('status', 'cancelled');
+    
+    activeTasks = packagesData || [];
+  }
 
   return (
     <div className="max-w-md mx-auto min-h-screen bg-[#F8FAFC] pb-24 sm:pb-8">
@@ -62,7 +62,7 @@ export default async function DriverDashboard() {
           <div className="h-8 w-px bg-white/20"></div>
           <div>
             <p className="text-emerald-100 text-xs">Today's Tasks</p>
-            <p className="font-semibold text-sm">{mockTasks.length} Pending</p>
+            <p className="font-semibold text-sm">{activeTasks.length} Pending</p>
           </div>
         </div>
       </div>
@@ -71,40 +71,11 @@ export default async function DriverDashboard() {
       <div className="px-5 mt-6 space-y-4">
         <h2 className="text-lg font-bold text-slate-800">Task Manifest</h2>
         
-        {mockTasks.map((task, idx) => (
-          <div key={task.id} className="bg-white border border-[#E2E8F0] rounded-2xl p-5 shadow-sm relative overflow-hidden">
-            {/* Edge-to-edge accent indicator */}
-            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#059669]"></div>
-            
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <span className="inline-block px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded">
-                  {task.time}
-                </span>
-                <h3 className="font-bold text-slate-900 text-lg mt-1">{task.id}</h3>
-              </div>
-              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize border ${
-                task.type === 'delivery' 
-                  ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                  : 'bg-purple-50 text-purple-700 border-purple-200'
-              }`}>
-                {task.type}
-              </span>
-            </div>
-            
-            <p className="text-slate-600 text-sm font-medium mb-1 line-clamp-1">{task.address}</p>
-            <p className="text-slate-400 text-xs mb-4">{task.details}</p>
-            
-            <button className="w-full bg-[#059669] hover:bg-[#047857] text-white font-semibold py-3.5 rounded-xl transition-colors active:scale-[0.98] shadow-sm flex items-center justify-center gap-2">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Start {task.type === 'delivery' ? 'Delivery' : 'Pickup'}
-            </button>
-          </div>
+        {activeTasks.map((task) => (
+          <DriverTaskCard key={task.package_id} task={task} driverType={employee?.emp_type} />
         ))}
 
-        {mockTasks.length === 0 && (
+        {activeTasks.length === 0 && (
           <div className="text-center py-10">
             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
               <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
