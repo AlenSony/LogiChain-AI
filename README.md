@@ -22,24 +22,24 @@ Featuring a core multi-agent AI layer built on **LangGraph**, the system autonom
                        ┌───────────────────────┐
                        │   Next.js Frontend    │
                        └───────────┬───────────┘
-                                   │ HTTPS / WebSockets
+                                   │ Supabase Client (Browser/Server)
                                    ▼
                        ┌───────────────────────┐
-                       │   FastAPI Core API    │
+                       │   Supabase Backend    │
+                       │ (Auth, PostgREST API) │
                        └─────┬───────────┬─────┘
                              │           │
            ┌─────────────────┘           └─────────────────┐
            ▼                                               ▼
 ┌─────────────────────┐                         ┌─────────────────────┐
-│  PostgreSQL DB      │                         │  Celery Task Worker │
+│  PostgreSQL DB      │                         │  Edge Functions     │
 │  (Data & Ledger)    │                         │  (Background Jobs)  │
 └─────────────────────┘                         └──────────┬──────────┘
                                                            │
                                                            ▼
                                                 ┌─────────────────────┐
-                                                │  Redis Message Broker│
+                                                │   LangGraph AI Swarm│
                                                 └─────────────────────┘
-
 ```
 
 ### AI Agent Workflow Engine
@@ -72,15 +72,117 @@ Featuring a core multi-agent AI layer built on **LangGraph**, the system autonom
 
 ---
 
+## Directory Structure
+
+logichain-ai/
+├── backend/
+│   ├── app/
+│   │   ├── api/                    # API Endpoints (Versioned)
+│   │   │   ├── v1/
+│   │   │   │   ├── auth.py         # JWT & Cookie-based Auth handlers
+│   │   │   │   ├── employees.py    # Employee & Fleet tracking
+│   │   │   │   ├── packages.py     # Package CRUD & Status transitions
+│   │   │   │   └── routing.py      # Triggering manual/AI routing steps
+│   │   │   └── deps.py             # FastAPI Dependencies (get_db, get_current_user)
+│   │   │
+│   │   ├── core/                   # System Configuration & Security
+│   │   │   ├── config.py           # Pydantic BaseSettings (Env loader)
+│   │   │   ├── database.py         # SQLAlchemy Async Engine & Session local
+│   │   │   └── security.py         # Password hashing, JWT encode/decode
+│   │   │
+│   │   ├── models/                 # SQLAlchemy ORM Data Models
+│   │   │   ├── base.py             # Shared Base declarative class
+│   │   │   ├── package.py          # Packages & PackageRoutes models
+│   │   │   ├── tracking.py         # TrackingEvents & PackageLocation
+│   │   │   └── user.py             # Users & Employees models
+│   │   │
+│   │   ├── schemas/                # Pydantic Validation Handlers
+│   │   │   ├── auth.py
+│   │   │   ├── package.py
+│   │   │   └── user.py
+│   │   │
+│   │   ├── services/               # Core Logistical Algorithms
+│   │   │   ├── pathfinding.py      # Dijkstra & A* Search implementations
+│   │   │   └── qr_engine.py        # QR Code generator & signature validator
+│   │   │
+│   │   ├── workers/                # Distributed Task Engine
+│   │   │   ├── celery_app.py       # Celery configuration & Redis binding
+│   │   │   └── tasks.py            # Async notification / PDF generation tasks
+│   │   │
+│   │   └── main.py                 # FastAPI Application entry point
+│   │
+│   ├── agents/                     # LangGraph Multi-Agent Layer
+│   │   ├── state.py                # Agent State definitions (Graph memory)
+│   │   ├── graph.py                # LangGraph Workflow Construction & Compiling
+│   │   ├── tools/                  # LLM Action Executions (DB / Route Tool bindings)
+│   │   │   ├── routing_tools.py
+│   │   │   └── warehouse_tools.py
+│   │   └── nodes/                  # Individual Swarm Agent Prompts & Logics
+│   │       ├── security_agent.py
+│   │       ├── intent_classifier.py
+│   │       ├── order_agent.py
+│   │       ├── routing_agent.py
+│   │       └── warehouse_agent.py
+│   │
+│   ├── alembic/                    # Database Schema Migrations folder
+│   │   ├── versions/
+│   │   └── env.py
+│   │
+│   ├── .env.example
+│   ├── alembic.ini
+│   ├── requirements.txt
+│   └── Dockerfile
+│
+├── frontend/
+│   ├── src/
+│   │   ├── app/                    # Next.js App Router Pages
+│   │   │   ├── (auth)/             # Auth Route Group (Login/Register)
+│   │   │   │   └── login/
+│   │   │   ├── dashboard/          # Shared Layout
+│   │   │   │   ├── admin/          # Admin Control Tower views
+│   │   │   │   ├── customer/       # Customer Booking & Tracking views
+│   │   │   │   ├── driver/         # Mobile-responsive QR Scanner & Proof-of-delivery
+│   │   │   │   └── page.tsx
+│   │   │   ├── layout.tsx
+│   │   │   └── page.tsx            # Landing Page
+│   │   │
+│   │   ├── components/             # Reusable UI Architecture
+│   │   │   ├── maps/               # Leaflet Map Wrapper (Dynamic route plotting)
+│   │   │   ├── ui/                 # Shadcn primitives (Buttons, Cards, Modals)
+│   │   │   └── qr/                 # QR Code Scanner & Reader interfaces
+│   │   │
+│   │   ├── hooks/                  # Global Custom React Hooks
+│   │   │   └── useAuth.ts          # Auth state monitor
+│   │   │
+│   │   ├── lib/                    # Configuration Instances
+│   │   │   └── api-client.ts       # Axios wrapper with credentials config
+│   │   │
+│   │   ├── services/               # React Query / Data Mutation hooks
+│   │   │   ├── queries.ts          # GET requests (tracking, analytics)
+│   │   │   └── mutations.ts        # POST/PUT requests (shipment creation, scanning)
+│   │   │
+│   │   └── types/                  # Shared TypeScript Structural Definitions
+│   │       └── index.ts
+│   │
+│   ├── public/                     # Static Asserts (logos, sounds)
+│   ├── .env.local
+│   ├── next.config.js
+│   ├── package.json
+│   ├── tailwind.config.js
+│   └── tsconfig.json
+│
+├── docker-compose.yml              # Provisions Postgres, Redis, and App cluster
+└── README.md
+
 ## 🛠️ Tech Stack
 
 | Layer | Technology | Description |
 | --- | --- | --- |
-| **Frontend** | Next.js (App Router), TypeScript, Tailwind CSS, Shadcn UI | Responsive dashboard, real-time map interfaces, and telemetry. |
+| **Frontend** | Next.js 16 (App Router), TypeScript, Tailwind CSS | Responsive dashboard, real-time map interfaces, and telemetry using Minimalist White & Jade Green system. |
 | **Mapping** | Leaflet Maps, OpenStreetMap, OSRM / GraphHopper | Geographical rendering, path plotting, and spatial distance lookup. |
-| **Backend API** | FastAPI, Pydantic v2, SQLAlchemy, Alembic | Async performance, strict data validation, and database migrations. |
-| **Authentication** | JWT inside `HttpOnly` Secure Cookies | State-free secure user sessions protected against XSS and CSRF. |
-| **Task Queue** | Celery, Redis | Distributed asynchronous processing for notifications, heavy routing queries, and PDF generation. |
+| **Backend API** | Supabase (PostgREST) | Auto-generated REST API directly mapped from PostgreSQL schema. |
+| **Authentication** | Supabase Auth (GoTrue) | JWT inside `HttpOnly` Secure Cookies via Next.js middleware and proxy. |
+| **Task Queue** | Supabase Edge Functions | Distributed asynchronous processing for notifications and AI workflows. |
 | **Database** | PostgreSQL | Relational transactional ledger preserving data consistency across multi-hub legs. |
 | **AI Orchestration** | LangGraph, LangChain, OpenAI API / Ollama | Directed cyclic/acyclic graph execution of agent actions and state management. |
 
@@ -284,69 +386,35 @@ Where:
 
 ### Prerequisites
 
-* Docker & Docker Compose
+* Docker & Docker Compose (for Supabase Local Dev)
 * Node.js v18+
-* Python 3.10+
 * OpenAI API Key
 
-### Backend Environment Configuration
-
-Create a `.env` file inside the `/backend` directory:
-
-```env
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/logichain
-REDIS_URL=redis://localhost:6379/0
-OPENAI_API_KEY=sk-proj-...
-JWT_SECRET_KEY=your_super_secret_cryptographic_string_key
-
-```
-
-### Installation Steps
+### Configuration & Setup
 
 1. **Clone the repository:**
 ```bash
 git clone https://github.com/yourusername/logichain-ai.git
 cd logichain-ai
-
 ```
 
-
-2. **Spin up Infrastructure Infrastructure (PostgreSQL & Redis):**
-```bash
-docker-compose up -d
-
-```
-
-
-3. **Initialize the Backend Engine:**
+2. **Initialize Supabase Local Database:**
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-alembic upgrade head
-uvicorn main:app --reload
-
+npx supabase start
 ```
+This will automatically spin up PostgreSQL, GoTrue, and all Supabase services, and apply the initial schema and RLS migrations.
 
+3. **Initialize Frontend Application:**
+Configure the `.env.local` file inside the `frontend` directory using the output from the `supabase start` command (e.g. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
 
-4. **Initialize the Celery Task Worker:**
-```bash
-celery -A tasks.celery_app worker --loglevel=info
-
-```
-
-
-5. **Initialize Frontend Application:**
 ```bash
 cd ../frontend
 npm install
 npm run dev
-
 ```
 
-
-
+The Customer Dashboard will now be available at `http://localhost:3000`.
 ---
 
 ## 🔒 Security & Verification Workflows

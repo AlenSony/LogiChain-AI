@@ -6,3 +6,19 @@
 .env.keys
 .env.local
 .env.*.local
+
+# Environment
+.env
+
+# Python virtual environments
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# IDE AI / Agents
+.gemini/
+.agents/
+.claude/
+CLAUDE.md
