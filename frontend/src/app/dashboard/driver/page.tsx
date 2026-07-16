@@ -1,6 +1,10 @@
 import React from 'react';
 import { createClient } from '@/lib/supabase/server';
 import DriverTaskCard from '@/components/ui/DriverTaskCard';
+import QRScannerModal from '@/components/ui/QRScannerModal';
+import TrackingMapWrapper from '@/components/ui/TrackingMapWrapper';
+import TrackingTimeline from '@/components/ui/TrackingTimeline';
+import type { TrackingEvent, Warehouse, Package } from '@/types/logistics';
 
 export default async function DriverDashboard() {
   const supabase = await createClient();
@@ -11,7 +15,7 @@ export default async function DriverDashboard() {
   // 2. Fetch the driver's profile & employee record
   const { data: employee } = await supabase
     .from('employees')
-    .select('emp_type, vehicle_id, profiles(name)')
+    .select('employee_id, emp_type, vehicle_id, warehouse_id, profiles(name)')
     .eq('user_id', user?.id)
     .single();
 
@@ -29,7 +33,7 @@ export default async function DriverDashboard() {
     
   const packageIds = Array.from(new Set((driverEvents || []).map(e => e.package_id)));
 
-  let activeTasks = [];
+  let activeTasks: Package[] = [];
   if (packageIds.length > 0) {
     const { data: packagesData } = await supabase
       .from('packages')
@@ -38,8 +42,40 @@ export default async function DriverDashboard() {
       .neq('status', 'delivered')
       .neq('status', 'cancelled');
     
-    activeTasks = packagesData || [];
+    activeTasks = (packagesData || []) as Package[];
   }
+
+  // 4. Fetch tracking events for active tasks (for timeline)
+  const taskTrackingEvents: Record<number, TrackingEvent[]> = {};
+  if (activeTasks.length > 0) {
+    const activeIds = activeTasks.map(t => t.package_id);
+    const { data: events } = await supabase
+      .from('tracking_events')
+      .select('*')
+      .in('package_id', activeIds)
+      .order('timestamp', { ascending: true });
+    
+    for (const event of (events || []) as TrackingEvent[]) {
+      if (event.package_id !== null) {
+        if (!taskTrackingEvents[event.package_id]) {
+          taskTrackingEvents[event.package_id] = [];
+        }
+        taskTrackingEvents[event.package_id].push(event);
+      }
+    }
+  }
+
+  // 5. Fetch warehouse hubs for the map context
+  const { data: warehouseData } = await supabase
+    .from('warehouses')
+    .select('*');
+  
+  const warehouses = (warehouseData || []) as Warehouse[];
+
+  // 6. Find the primary active delivery task for the map
+  const primaryTask = activeTasks.find(t => 
+    ['out_for_delivery', 'in_transit'].includes(t.status)
+  ) || activeTasks[0];
 
   return (
     <div className="max-w-md mx-auto min-h-screen bg-[#F8FAFC] pb-24 sm:pb-8">
@@ -61,18 +97,51 @@ export default async function DriverDashboard() {
           </div>
           <div className="h-8 w-px bg-white/20"></div>
           <div>
-            <p className="text-emerald-100 text-xs">Today's Tasks</p>
+            <p className="text-emerald-100 text-xs">Today&apos;s Tasks</p>
             <p className="font-semibold text-sm">{activeTasks.length} Pending</p>
           </div>
         </div>
       </div>
+
+      {/* Live GPS Map — shows primary active task */}
+      {primaryTask && (
+        <div className="px-5 mt-6">
+          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Live Tracking</h2>
+          <TrackingMapWrapper
+            packageId={primaryTask.package_id}
+            trackingNumber={primaryTask.tracking_number}
+            warehouses={warehouses}
+            height={280}
+          />
+        </div>
+      )}
 
       {/* Task Manifest */}
       <div className="px-5 mt-6 space-y-4">
         <h2 className="text-lg font-bold text-slate-800">Task Manifest</h2>
         
         {activeTasks.map((task) => (
-          <DriverTaskCard key={task.package_id} task={task} driverType={employee?.emp_type} />
+          <div key={task.package_id} className="space-y-3">
+            <DriverTaskCard task={task} driverType={employee?.emp_type} />
+            
+            {/* Per-task Tracking Timeline */}
+            {taskTrackingEvents[task.package_id]?.length > 0 && (
+              <details className="group">
+                <summary className="text-xs font-semibold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-[#059669] transition-colors flex items-center gap-1.5 pl-1">
+                  <svg className="w-3.5 h-3.5 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                  </svg>
+                  Tracking History ({taskTrackingEvents[task.package_id].length} events)
+                </summary>
+                <div className="mt-3 ml-1">
+                  <TrackingTimeline
+                    events={taskTrackingEvents[task.package_id]}
+                    currentStatus={task.status}
+                  />
+                </div>
+              </details>
+            )}
+          </div>
         ))}
 
         {activeTasks.length === 0 && (
@@ -87,18 +156,15 @@ export default async function DriverDashboard() {
         )}
       </div>
 
-      {/* Handshake Handlers (Placeholders) */}
+      {/* Verification Tools */}
       <div className="px-5 mt-8 space-y-4">
         <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Verification Tools</h2>
         <div className="grid grid-cols-2 gap-4">
-          <button className="bg-white border border-[#E2E8F0] p-4 rounded-2xl flex flex-col items-center justify-center gap-3 hover:border-[#059669] transition-colors shadow-sm group">
-            <div className="w-12 h-12 rounded-full bg-[#D1FAE5] text-[#059669] flex items-center justify-center group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-              </svg>
-            </div>
-            <span className="text-xs font-semibold text-slate-700">QR Scanner</span>
-          </button>
+          {/* QR Scanner — functional component replaces the placeholder */}
+          <QRScannerModal 
+            employeeId={employee?.employee_id ?? 0} 
+            warehouseId={employee?.warehouse_id}
+          />
           
           <button className="bg-white border border-[#E2E8F0] p-4 rounded-2xl flex flex-col items-center justify-center gap-3 hover:border-[#059669] transition-colors shadow-sm group">
             <div className="w-12 h-12 rounded-full bg-[#D1FAE5] text-[#059669] flex items-center justify-center group-hover:scale-110 transition-transform">

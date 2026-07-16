@@ -1,6 +1,8 @@
 import React from 'react';
 import { createClient } from '@/lib/supabase/server';
 import WarehousePackageAction from '@/components/ui/WarehousePackageAction';
+import WarehouseHeatmap from '@/components/ui/WarehouseHeatmap';
+import type { Warehouse } from '@/types/logistics';
 
 export default async function WarehouseManagerDashboard() {
   const supabase = await createClient();
@@ -36,6 +38,13 @@ export default async function WarehouseManagerDashboard() {
     packages = (nodePackages || []).filter(pkg => validPackageIds.has(pkg.package_id));
   }
 
+  // 4. Fetch ALL warehouses for the system-wide heatmap
+  const { data: allWarehousesData } = await supabase
+    .from('warehouses')
+    .select('*');
+
+  const allWarehouses = (allWarehousesData || []) as Warehouse[];
+
   const capacityPercent = warehouse 
     ? Math.round((warehouse.current_load / warehouse.capacity) * 100) 
     : 0;
@@ -53,7 +62,7 @@ export default async function WarehouseManagerDashboard() {
         </div>
       </div>
 
-      {/* Capacity Visualizer */}
+      {/* Capacity Visualizer — Manager's own warehouse */}
       {warehouse && (
         <div className="bg-white border border-[#E2E8F0] rounded-xl p-6 shadow-sm">
           <div className="flex justify-between items-end mb-4">
@@ -92,6 +101,15 @@ export default async function WarehouseManagerDashboard() {
           )}
         </div>
       )}
+
+      {/* System-Wide Warehouse Heatmap */}
+      <div>
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-slate-800">System Capacity Heatmap</h2>
+          <p className="text-sm text-slate-500 mt-1">Real-time capacity across all warehouse nodes</p>
+        </div>
+        <WarehouseHeatmap warehouses={allWarehouses} />
+      </div>
 
       {/* Node Operations Grid */}
       <div className="bg-white border border-[#E2E8F0] rounded-xl shadow-sm overflow-hidden">
